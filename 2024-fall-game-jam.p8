@@ -12,11 +12,10 @@ function _init()
   new_player(2),
  }
  cards={
-  new_card(30,100,'frank_head',1),
-  new_card(50,100,'frank_body',1),
-  new_card(70,100,'frank_legs',1),
-  new_card(90,100,'frank_legs',1),
-  new_card(110,100,'frank_legs',1)
+  new_card(30,90,'frank_head',1),
+  new_card(50,90,'frank_body',1),
+  new_card(70,90,'frank_legs',1),
+  new_card(90,90,'frank_legs',1),
  }
  deck=new_deck(1)
 end
@@ -29,6 +28,12 @@ function new_card (x,y,t,p)
   w=2*8,
   h=3*8,
   placed=false,
+  draw=function(self)
+   spr(self.s,self.x,self.y,2,2)
+   spr(3,self.x,self.y+16,2,1)
+   print(self.hp,self.x+5,self.y+17,1)
+   print(self.hp,self.x+12,self.y+17,1)
+  end,
  }
  for k,v in pairs(card_data[t]) do
   card[k]=v
@@ -38,7 +43,9 @@ end
 function new_deck (p)
  return {
   x=10,
-  y=100,
+  y=90,
+  w=2*8,
+  h=3*8,
   draw=function(self)
    spr(14,self.x,self.y,2,3)
   end,
@@ -60,74 +67,106 @@ end
 
 function _update60()
  game_state_msg=nil
+ hover_card=nil
  mouse.x=stat(32)
  mouse.y=stat(33)
+ foreach(cards,function(c)
+  if collide(mouse,c) then
+   hover_card=c
+   return
+  end
+ end)
  if state=='game' then
   if game_state=='draw_one' then
    game_state_msg='draw a card'
-  elseif gate_state=='play_one' then
-   game_state_msg='play a card'
+   if stat(34)==1 and
+      collide(mouse,deck) then
+    new_card(110,90,'frank_legs',1)
+    game_state='play_one'
+    return
+   end
+  elseif game_state=='play_one' then
+   game_state_msg='play a card' 
+   -- mouse down
+   if stat(34)==1 then
+    -- are we holding a card?
+    if held_card then
+     held_card.x=mid(mouse.x-held_offset_x,20,100)
+     held_card.y=mid(mouse.y-held_offset_y,40,120)
+    else
+     -- are we picking up a card?
+     foreach(cards,function(c)
+      if not c.placed and
+         collide(mouse,c) then
+       held_card=c
+       held_offset_x=mouse.x-c.x
+       held_offset_y=mouse.y-c.y
+      end
+     end)
+    end
+   else
+    held_card=nil
+    spr(1,mouse.x,mouse.y)
+   end
   elseif game_state=='discard_one' then
    game_state_msg='discard a card'
   elseif game_state=='deal_damage' then
   end
-  -- mouse down
-  if stat(34)==1 then
-   -- are we holding a card?
-   if held_card then
-    held_card.x=mouse.x-held_offset_x
-    held_card.y=mouse.y-held_offset_y
-   else
-    -- are we picking up a card?
-    foreach(cards,function(c)
-     if not c.placed and
-        collide(mouse,c) then
-      held_card=c
-      held_offset_x=mouse.x-c.x
-      held_offset_y=mouse.y-c.y
-     end
-    end)
-   end
-  else
-   held_card=nil
-   spr(1,mouse.x,mouse.y)
-  end
  end
 end
 
-function _draw()
- cls()
+function _draw ()
+ cls(1)
  deck:draw()
  foreach(cards,function(c)
-  spr(c.s,c.x,c.y,2,2)
-  spr(3,c.x,c.y+16,2,1)
-  print(c.hp,c.x+5,c.y+17,1)
-  print(c.hp,c.x+12,c.y+17,1)
+  c:draw()
  end)
+ if held_card then
+  rectfill(held_card.x+1,
+           held_card.y+1,
+           held_card.x+2*8,
+           held_card.y+3*8+1,0)
+  held_card:draw()
+ end
+ -- draw mouse
  if stat(34)==1 then
   spr(2,mouse.x,mouse.y)
  else
   spr(1,mouse.x,mouse.y)
  end
  if game_state_msg then
-  print(game_state_msg,
-        64-#game_state_msg*2,
-        sin(time())+.1+10,10)
+  cprint(game_state_msg,64,
+         sin(time())+.1+10,10)
  end
+ if hover_card and
+    not held_card then
+  cprint(hover_card.name,64,120, 10)
+ end
+ if held_card then
+  cprint(held_card.name,64,120,10)
+ end
+end
+
+function cprint(msg,x,y,c)
+ print(msg,x-#msg*2,y,c)
 end
 -->8
 card_data={
  frank_head={
+  name='frankenstein - head',
   s=16,
   hp=2,
   atk=2,
  },
  frank_body={
+  name='frankenstein - body',
   s=18,
   hp=2,
   atk=2,
  },
  frank_legs={
+  name='frankenstein - legs',
+
   s=20,
   hp=2,
   atk=2,
