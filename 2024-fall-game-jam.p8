@@ -4,7 +4,6 @@ __lua__
 function _init()
  state='game'
  game_state='draw_one'
-
  game_state='deal_hand'
  -- setup mouse
  poke(0x5f2d, 1)
@@ -18,20 +17,33 @@ function _init()
  player_one_hand={}
  player_two_hand={}
  lanes={
- new_lane('top'),
- new_lane('mid'),
- new_lane('bot'),
+  new_lane('top',1),
+  new_lane('mid',1),
+  new_lane('bot',1),
+  new_lane('top',2),
+  new_lane('mid',2),
+  new_lane('bot',2),
  }
  deck=new_deck(1)
+ smokes={}
 end
-function new_lane (t)
+function new_smoke (x,y)
+ return {
+  x=x,
+  y=y,
+  dx=rnd(2)-1,
+  dy=rnd(1)-1,
+ }
+end
+function new_lane (t,p)
  local lane={
   head=nil,
   body=nil,
   legs=nil,
+  player=p,
  }
  lane.x=10
- lane.w=90
+ lane.w=50
  lane.h=20
  if t=='top' then
   lane.y=10
@@ -40,6 +52,12 @@ function new_lane (t)
  elseif t=='bot' then
   lane.y=70
  end
+ if p==2 then
+  lane.x+=55
+ end
+ lane.head_x=lane.x
+ lane.body_x=lane.x+20
+ lane.legs_x=lane.x+40
  return lane
 end
 function new_card (x,y,t,p)
@@ -151,6 +169,8 @@ function _update60()
      local card=new_card(deck.x,deck.y,'random')
      card.target_x=deck.x+i*20+20
      card.target_y=deck.y
+     card.start_x=card.target_x
+     card.start_y=card.y
      add(player_one_hand,card)
      add(cards,card)
     end
@@ -177,6 +197,8 @@ function _update60()
     local c=new_card(deck.x,deck.y,'frank_legs',1)
     add(player_one_hand,c)
     c.target_x=deck.x+(#player_one_hand-1)*20+20
+    c.start_x=c.target_x
+    c.start_y=c.y
     add(cards,c)
     drew_card=c
    end
@@ -192,22 +214,60 @@ function _update60()
      -- are we picking up a card?
      foreach(cards,function(c)
       if not c.placed and
-         collide(mouse,c) then
+         c==hover_card then
        held_card=c
-       held_card.origin_x=c.x
-       held_card.origin_y=c.y
        held_offset_x=mouse.x-c.x
        held_offset_y=mouse.y-c.y
+       foreach(lanes,function(l)
+        l.valid=false
+        if l.player==2 then
+         return
+        end
+        if c.head and not l.head then
+         l.valid=true
+        elseif c.body and not l.body then
+         l.valid=true
+        elseif c.legs and not l.legs then
+         l.valid=true
+        end
+       end)
       end
      end)
     end
    else
     local lane=nil
-    if held_card then
-     held_card.target_x=held_card.origin_x
-     held_card.target_y=held_card.origin_y
+    foreach(lanes,function(l)
+     if not l.valid then
+      return
+     end
+     if not collide(mouse,l) then
+      return
+     end
+     held_card.placed=true
+     
+     if held_card.head then
+      held_card.target_x=l.head_x
+      l.head=held_card
+     elseif held_card.body then
+      held_card.target_x=l.body_x
+      l.body=held_card
+     elseif held_card.legs then
+      held_card.target_x=l.legs_x
+      l.legs=held_card
+     end
+     held_card.target_y=l.y
+     held_card=nil
+     -- is lane complete?
+    end)
+    if held_card and not lane then
+     held_card.target_x=held_card.start_x
+     held_card.target_y=held_card.start_y
     end
     held_card=nil
+    valid_spots=nil
+    foreach(lanes,function(l)
+     l.valid=false
+    end)
     spr(1,mouse.x,mouse.y)
    end
   elseif game_state=='discard_one' then
@@ -220,6 +280,11 @@ end
 function _draw ()
  cls(1)
  foreach(lanes,function(lane)
+  if lane==hover_lane then
+   color(7)
+  else
+   color(10)
+  end
   rect(lane.x,lane.y,lane.x+lane.w,lane.y+lane.h)
  end)
  deck:draw()
