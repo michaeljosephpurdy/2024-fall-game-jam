@@ -12,18 +12,38 @@ function _init()
   new_player(1),
   new_player(2),
  }
+ skip_button={
+  x=3,
+  y=106,
+  w=16,
+  h=8,
+  draw=function(self)
+   spr(9,self.x,self.y+sin(time())+.1,2,1)
+  end,
+ }
  cards={
+ }
+ mobs={
  }
  player_one_hand={}
  player_two_hand={}
- lanes={
+ player_one_lanes={
   new_lane('top',1),
   new_lane('mid',1),
   new_lane('bot',1),
+ }
+ player_two_lanes={
   new_lane('top',2),
   new_lane('mid',2),
   new_lane('bot',2),
  }
+ lanes={}
+ foreach(player_one_lanes,function(l)
+  add(lanes,l)
+ end)
+ foreach(player_two_lanes,function(l)
+  add(lanes,l)
+ end)
  deck=new_deck(1)
  smokes={}
 end
@@ -40,25 +60,60 @@ function new_lane (t,p)
   head=nil,
   body=nil,
   legs=nil,
+  mob=nil,
   player=p,
+  id=rnd()*1000,
  }
  lane.x=10
  lane.w=50
  lane.h=20
- if t=='top' then
-  lane.y=10
- elseif t=='mid' then
-  lane.y=40
- elseif t=='bot' then
-  lane.y=70
- end
- if p==2 then
+ lane.t=t
+ lane[t]=true
+ if lane.player==2 then
   lane.x+=55
  end
  lane.head_x=lane.x
  lane.body_x=lane.x+20
  lane.legs_x=lane.x+40
+ if t=='top' then
+  lane.y=10
+  lane.mob_x=lane.head_x
+  lane.mob_y=lane.y+20
+ elseif t=='mid' then
+  lane.y=40
+  lane.mob_x=lane.body_x
+  lane.mob_y=lane.y
+ elseif t=='bot' then
+  lane.y=70
+  lane.mob_x=lane.leg_x
+  lane.mob_y=lane.y-20
+ end
  return lane
+end
+function new_mob (x,y,p,t,head,body,legs)
+ local hp=head.hp+body.hp+legs.hp
+ local atk=head.atk+body.atk+legs.atk
+ return {
+  x=x,
+  y=y,
+  head=head.s,
+  body=body.s,
+  legs=legs.s,
+  player=p,
+  t=t,
+  hp=hp,
+  atk,atk,
+  id=rnd()*1000,
+  draw=function(self)
+   palt()
+   palt(0,false)
+   palt(14,true)
+   local flip_h=p==2
+   spr(self.head,self.x,self.y,2,2,flip_h)
+   spr(self.body,self.x,self.y+16,2,2,flip_h)
+   spr(self.legs,self.x,self.y+24,2,2,flip_h)
+  end,
+ }
 end
 function new_card (x,y,t,p)
  local card={
@@ -78,6 +133,8 @@ function new_card (x,y,t,p)
    -- draw background
    if self.bg then
     color(self.bg)
+   elseif self.p==2 then
+    color(0)
    elseif self.head then
     color(13)
    elseif self.body then
@@ -95,11 +152,8 @@ function new_card (x,y,t,p)
    print(self.hp,self.x+5,self.y+17,1)
    print(self.hp,self.x+12,self.y+17,1)
    -- draw sprite
-   palt()
-   if self.t then
-    palt(0,false)
-    palt(self.t,true)
-   end
+   palt(0,false)
+   palt(14,true)
    spr(self.s,self.x,self.y,2,2)
   end,
  }
@@ -143,6 +197,7 @@ function _update60()
  game_state_msg=nil
  hover_card=nil
  hover_lane=nil
+ show_skip_button=false
  mouse.x=stat(32)
  mouse.y=stat(33)
  foreach(lanes,function(l)
@@ -176,7 +231,7 @@ function _update60()
     end
    end
    local done=true
-   foreach(cards,function(c)
+   foreach(player_one_hand,function(c)
     c.done=ceil(c.x)==c.target_x
     c.turned_over=not c.done
     done=c.done and done
@@ -193,8 +248,8 @@ function _update60()
      game_state='play_one'
      drew_card=nil
     end
-   elseif click_on(deck) then
-    local c=new_card(deck.x,deck.y,'frank_legs',1)
+   else
+    local c=new_card(deck.x,deck.y,'random',1)
     add(player_one_hand,c)
     c.target_x=deck.x+(#player_one_hand-1)*20+20
     c.start_x=c.target_x
@@ -203,7 +258,12 @@ function _update60()
     drew_card=c
    end
   elseif game_state=='play_one' then
-   game_state_msg='play a card' 
+   show_skip_button=true
+   game_state_msg='play a card'
+   if click_on(skip_button) then
+    game_state='discard_one'
+    found_monsters=false
+   end
    -- mouse down
    if stat(34)==1 then
     -- are we holding a card?
@@ -212,7 +272,7 @@ function _update60()
      held_card.y=mid(0,mouse.y-held_offset_y,100)
     else
      -- are we picking up a card?
-     foreach(cards,function(c)
+     foreach(player_one_hand,function(c)
       if not c.placed and
          c==hover_card then
        held_card=c
@@ -244,7 +304,7 @@ function _update60()
       return
      end
      held_card.placed=true
-     
+     del(player_one_hand,held_card)
      if held_card.head then
       held_card.target_x=l.head_x
       l.head=held_card
@@ -257,7 +317,10 @@ function _update60()
      end
      held_card.target_y=l.y
      held_card=nil
+     play_cpu_card()
      -- is lane complete?
+     game_state='discard_one'
+     found_monsters=false
     end)
     if held_card and not lane then
      held_card.target_x=held_card.start_x
@@ -271,8 +334,61 @@ function _update60()
     spr(1,mouse.x,mouse.y)
    end
   elseif game_state=='discard_one' then
+    -- make all monsters
+    if not found_monsters then
+     found_monsters=true
+     foreach(lanes,function(l)
+     if l.mob then
+      return
+     end
+     if not (l.head and l.body and l.legs) then
+      return
+     end
+     local mob=new_mob(
+      l.mob_x,
+      l.mob_y,
+      l.player,
+      l.t,
+      l.head,
+      l.body,
+      l.legs
+     )
+     del(cards,l.head)
+     del(cards,l.body)
+     del(cards,l.legs)
+     add(mobs,mob)
+     l.mob=mob
+     mob.lane=l
+    end)
+   end
    game_state_msg='discard a card'
+   if hover_card and
+      not hover_card.placed and
+      click_on(hover_card) then
+    del(cards,hover_card)
+    del(player_one_hand,hover_card)
+    game_state='deal_damage'
+   end  
+   for i,c in pairs(player_one_hand) do
+     c.target_x=deck.x+i*20
+   end
   elseif game_state=='deal_damage' then
+   if not routines_built then
+    routines_built=trued
+    top_action=setup_lane_action('top')
+    mid_action=setup_lane_action('mid')
+    bot_action=setup_lane_action('bot')
+   else
+    coresume(top_action)
+    coresume(mid_action)
+    coresume(bot_action)
+    if #player_one_hand==0 then
+     game_state='deal_hand'
+    else
+     game_state='draw_one'
+    end
+    routines_built=false
+   end
   end
  end
 end
@@ -280,16 +396,30 @@ end
 function _draw ()
  cls(1)
  foreach(lanes,function(lane)
-  if lane==hover_lane then
+  if lane==hover_lane and
+     lane.player==1 then
    color(7)
-  else
+  elseif lane.valid then
    color(10)
+  else
+   color(0)
   end
-  rect(lane.x,lane.y,lane.x+lane.w,lane.y+lane.h)
+  if not lane.mob then
+   rect(lane.x,lane.y,lane.x+lane.w,lane.y+lane.h)
+   if lane.player==2 then
+    rectfill(lane.x,lane.y,lane.x+lane.w,lane.y+lane.h)
+   end
+  end
  end)
  deck:draw()
+ if show_skip_button then
+  skip_button:draw()
+ end
  foreach(cards,function(c)
   c:draw()
+ end)
+ foreach(mobs,function(m)
+  m:draw()
  end)
  if held_card then
   rectfill(held_card.x+1,
@@ -317,8 +447,8 @@ function _draw ()
  if held_card then
   cprint(held_card.name,64,120,10)
  end
- print(players[1].hp,0,0)
- print(players[2].hp,120,0)
+ print(players[1].hp,2,2)
+ print(players[2].hp,118,2)
 end
 
 function cprint(msg,x,y,c)
@@ -332,6 +462,150 @@ end
 function click_on(obj)
  return stat(34)==1 and
         collide(mouse,obj)
+end
+
+function filter(tbl,arg)
+ local fn=arg
+ if type(arg)=='string' then
+  fn=function(i)
+   return i[arg]
+  end
+ end
+ local res={}
+ foreach(tbl,function(item)
+  if fn(item) then
+   add(res,item)
+  end
+ end)
+ return res
+end
+
+function play_cpu_card()
+ local c=new_card(0,-30,'random',2)
+ c.turned_over=false
+ local found=nil
+ local checked={}
+ while true do
+  -- get a random lane
+  local l=rnd(player_two_lanes)
+  -- if the card can fit in lane
+  -- use it
+  if c.head and not l.head then
+   found=l
+   break
+  end
+  if c.body and not l.body then
+   found=l
+   break
+  end
+  if c.legs and not l.legs then
+   found=l
+   break
+  end
+  -- if we can't fit in that lane
+  -- then don't check this lane
+  -- again
+  add(checked,l)
+  -- if we've checked all lanes
+  -- then stop looking
+  if #checked==#player_two_lanes then
+   break
+  end
+ end
+ if found then
+  c.target_y=found.y
+  if c.head then
+   c.target_x=found.head_x
+   found.head=c
+  elseif c.body then
+   c.target_x=found.body_x
+   found.body=c
+  elseif c.legs then
+   c.target_x=found.legs_x
+   found.legs=c
+  end
+  add(cards,c)
+ end
+end
+
+function contains(tbl,key)
+ for k,_ in pairs(tbl) do
+  if key==k then
+   return true
+  end
+ end
+ return false
+end
+
+function setup_lane_action (lane_type)
+ printh('looking for '..lane_type)
+ local empty_coroutine=cocreate(function()
+  printh('empty coroutine')
+ end)
+ local player_one_lane=nil
+ local player_two_lane=nil
+ foreach(lanes,function(l)
+  if l.t==lane_type then
+   if l.player==1 then
+    player_one_lane=l
+   else
+    player_two_lane=l
+   end
+  end
+ end)
+ printh('player_one_lane')
+ printh(player_one_lane.id)
+ printh('player_two_lane')
+ printh(player_two_lane.id)
+ if not player_one_lane or
+    not player_two_lane then
+  return empty_coroutine
+ end
+ local player_one_mob=player_one_lane.mob
+ local player_two_mob=player_two_lane.mob
+ if not player_one_mob and
+    not player_two_mob then
+  return empty_coroutine
+ end
+ local pre_atk_func=function()
+  printh('pre-atk')
+ end
+ local atk_func=function()
+  printh('atk')
+ end
+ local post_atk_func=function()
+  printh('post-atk')
+ end
+ if player_one_mob and
+    player_two_mob then
+  atk_func=function()
+   local p1_atk=player_one_mob.atk
+   local p2_atk=player_two_mob.atk
+   player_two_mob.hp-=p1_atk
+   player_one_mob.hp-=p2_atk
+  end
+ elseif player_one_mob then
+  atk_func=function()
+   local p1_atk=player_one_mob.atk
+   players[2].hp-=p1_atk
+  end
+ elseif player_two_mob then
+  atk_func=function()
+   local p2_atk=player_two_mob.atk
+   players[1].hp-=p2_atk
+  end
+ end
+ printh('player_one_mob')
+ printh(player_one_mob.id)
+ printh('player_two_mob')
+ printh(player_two_mob.id)
+ return cocreate(function()
+  atk_func()
+  yield()
+  pre_atk_func()
+  yield()
+  post_atk_func()
+ end)
 end
 -->8
 card_data={
@@ -361,7 +635,6 @@ card_data={
   s=22,
   hp=5,
   atk=2,
-  t=14,
   head=true,
  },
  drac_body={
@@ -369,7 +642,6 @@ card_data={
   s=24,
   hp=5,
   atk=2,
-  t=14,
   body=true,
  },
  drac_legs={
@@ -377,7 +649,6 @@ card_data={
   s=26,
   hp=5,
   atk=2,
-  t=14,
   legs=true,
  },
 }
@@ -386,30 +657,30 @@ for k,v in pairs(card_data) do
  add(card_types,k)
 end
 __gfx__
-00000000010000000000000077777777777777770077777777777700700000000000000700000000000000000000000000000000000000000066666666666600
-000000001c10000001000000780800000060000707000000000000707000000000000007000000000000000000000000000000000000000006ddddd121dddd60
-007007001cc100001c10000078880000006000077000000000000007700000000000000700000000000000000000000000000000000000006dd1111121111dd6
-000770001ccc10001cc1000078880000006000077000000000000007700000000000000700000000000000000000000000000000000000006d111111211111d6
-000770001cccc1001ccc100078880000055500077000000000000007700000000000000700000000000000000000000000000000000000006d111112118111d6
-007007001cc111001cccc10070800000004000077000000000000007700000000000000700000000000000000000000000000000000000006d111112118111d6
-00000000511555001cc1110007000000000000707000000000000007700000000000000700000000000000000000000000000000000000006d111121111811d6
-00000000055000000110000000777777777777007000000000000007700000000000000700000000000000000000000000000000000000006d111211111811d6
-000000000000000000000000000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee00000000000000006d112111111811d6
-000000000000000000000000000000000000000000000000eeeeeeeeeeeeeeeeeeee000000eeeeeeeeeeeeeeeeeeeeee00000000000000006d112111118111d6
-00000033333000000000000bb00000000000077777700000eeeeeeeeeeeeeeeeeeeee0000eeeeeeeeeeeee00000eeeee00000000000000006d111211181111d6
-000003333330000000000077770000000000011111100000eeeeee00000eeeeeeeeeee0000eeeeeeeeeee000000eeeee00000000000000006d111118811111d6
-000033333330000000000bbb770000000000011111100000eeeee000000eeeeeeeeeee0000eeeeeeeeeee000000eeeee00000000000000006d111181111111d6
-00003333bbb000000000bbbb770000000000011111100000eeeee000000eeeeeeeeee00000eeeeeeeeeee000000eeeee00000000000000006d111811112111d6
-000033b3b7b000000000bbb7770000000000011111100000eeee0007777eeeeeeeeee00000eeeeeeeeeee000000eeeee00000000000000006d118111111211d6
-000033bbb1b000000000bbb77700000000000111c1100000eeee7007767eeeeeeeee000000eeeeeeeeeeee00000eeeee00000000000000006d118111111211d6
-00003bbbb1b000000000bbb77700000000000111c1100000eeee7077707eeeeeeeee000100eeeeeeeeeeee0000eeeeee00000000000000006d118111112111d6
-00000bbbbbb000000000bbb77700000000000111c1100000eeee7777707eeeeeeeee000100eeeeeeeeeeee0000eeeeee00000000000000006d111811121111d6
-00055bbbbbb000000000bbb77700000000000111c1100000eeee0777777eeeeeeeee000100eeeeeeeeeeee00000eeeee00000000000000006d111811211111d6
-0005566bb440000000000bb7bbb0000000000111c1100000eeee0077777eeeeeeeeee00100eeeeeeeeeeee00000eeeee00000000000000006d111111211111d6
-0005566bbbb0000000000bbbbbb0000000000111c1100000eeeee077788eeeeeeeeee00700eeeeeeeeeeee00000eeeee00000000000000006d111112111111d6
-00055bbbbbb00000000000bbbbb000000000011441444000eeeeee77777eeeeeeeeee70700eeeeeeeeeeee00000eeeee00000000000000006dd1111211111dd6
-0000000bbb00000000000077770000000000044444144400eeeeeee77eeeeeeeeeeee77700eeeeeeeeeeee011011eeee000000000000000006dddd121ddddd60
-0000000bbb00000000000077770000000000044444144400eeeeeee77eeeeeeeeeeeee000eeeeeeeeeeeee111011eeee00000000000000000066666666666600
+00000000010000000000000077777777777777770077777777777700700000000000000700666666666666600000000000000000000000000066666666666600
+000000001c10000001000000780800000060000707000000000000707000000000000007065575777777777600000000000000000000000006ddddd121dddd60
+007007001cc100001c10000078880000006000077000000000000007700000000000000765777577757555760000000000000000000000006dd1111121111dd6
+000770001ccc10001cc1000078880000006000077000000000000007700000000000000765557575777575760000000000000000000000006d111111211111d6
+000770001cccc1001ccc100078880000055500077000000000000007700000000000000767757557757555760000000000000000000000006d111112118111d6
+007007001cc111001cccc10070800000004000077000000000000007700000000000000765577575757577760000000000000000000000006d111112118111d6
+00000000511555001cc1110007000000000000707000000000000007700000000000000767777777777577600000000000000000000000006d111121111811d6
+00000000055000000110000000777777777777007000000000000007700000000000000706666666666666000000000000000000000000006d111211111811d6
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee00000000000000006d112111111811d6
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee000000eeeeeeeeeeeeeeeeeeeeee00000000000000006d112111118111d6
+eeeeee33333eeeeeeeeeeeebbeeeeeeeeeeee111111eeeeeeeeeeeeeeeeeeeeeeeeee0000eeeeeeeeeeeee00000eeeee00000000000000006d111211181111d6
+eeeee333333eeeeeeeeeee7777eeeeeeeeeee111111eeeeeeeeeee00000eeeeeeeeeee0000eeeeeeeeeee000000eeeee00000000000000006d111118811111d6
+eeee3333333eeeeeeeeeebbb77eeeeeeeeeee111111eeeeeeeeee000000eeeeeeeeeee0000eeeeeeeeeee000000eeeee00000000000000006d111181111111d6
+eeee3333bbbeeeeeeeeebbbb77eeeeeeeeeee111111eeeeeeeeee000000eeeeeeeeee00000eeeeeeeeeee000000eeeee00000000000000006d111811112111d6
+eeee33b3b7beeeeeeeeebbb777eeeeeeeeeee111111eeeeeeeee0007777eeeeeeeeee00000eeeeeeeeeee000000eeeee00000000000000006d118111111211d6
+eeee33bbb1beeeeeeeeebbb777eeeeeeeeeee111c11eeeeeeeee7007767eeeeeeeee000000eeeeeeeeeeee00000eeeee00000000000000006d118111111211d6
+eeee3bbbb1beeeeeeeeebbb777eeeeeeeeeee111c11eeeeeeeee7077707eeeeeeeee000100eeeeeeeeeeee0000eeeeee00000000000000006d118111112111d6
+eeeeebbbbbbeeeeeeeeebbb777eeeeeeeeeee111c11eeeeeeeee7777707eeeeeeeee000100eeeeeeeeeeee0000eeeeee00000000000000006d111811121111d6
+eee55bbbbbbeeeeeeeeebbb777eeeeeeeeeee111c11eeeeeeeee0777777eeeeeeeee000100eeeeeeeeeeee00000eeeee00000000000000006d111811211111d6
+eee5566bb44eeeeeeeeeebb7bbbeeeeeeeeee111c11eeeeeeeee0077777eeeeeeeeee00100eeeeeeeeeeee00000eeeee00000000000000006d111111211111d6
+eee5566bbbbeeeeeeeeeebbbbbbeeeeeeeeee111c11eeeeeeeeee077788eeeeeeeeee00700eeeeeeeeeeee00000eeeee00000000000000006d111112111111d6
+eee55bbbbbbeeeeeeeeeeebbbbbeeeeeeeeee11441444eeeeeeeee77777eeeeeeeeee70700eeeeeeeeeeee00000eeeee00000000000000006dd1111211111dd6
+eeeeeeebbbeeeeeeeeeeee7777eeeeeeeeeee444441444eeeeeeeee77eeeeeeeeeeee77700eeeeeeeeeeee011011eeee000000000000000006dddd121ddddd60
+eeeeeeebbbeeeeeeeeeeee7777eeeeeeeeeee444441444eeeeeeeee77eeeeeeeeeeeee000eeeeeeeeeeeee111011eeee00000000000000000066666666666600
 __label__
 aaa1aaa11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111aaa1aaa1
 11a1a1a11111111111111111111111111111111111aa11aaa1aaa1a1a11111aaa111111aa1aaa1aaa1aa11111111111111111111111111111111111111a1a1a1
