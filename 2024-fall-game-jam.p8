@@ -1,5 +1,5 @@
 pico-8 cartridge // http://www.pico-8.com
-version 41
+version 42
 __lua__
 function _init()
  state='game'
@@ -8,10 +8,8 @@ function _init()
  -- setup mouse
  poke(0x5f2d, 1)
  mouse={}
- players={
-  new_player(1),
-  new_player(2),
- }
+ player_one=new_player(1)
+ player_two=new_player(2)
  skip_button={
   x=3,
   y=106,
@@ -102,7 +100,7 @@ function new_mob (x,y,p,t,head,body,legs)
   player=p,
   t=t,
   hp=hp,
-  atk,atk,
+  atk=atk,
   id=rnd()*1000,
   draw=function(self)
    palt()
@@ -341,7 +339,9 @@ function _update60()
      if l.mob then
       return
      end
-     if not (l.head and l.body and l.legs) then
+     if not (l.head and
+             l.body and
+             l.legs) then
       return
      end
      local mob=new_mob(
@@ -374,7 +374,7 @@ function _update60()
    end
   elseif game_state=='deal_damage' then
    if not routines_built then
-    routines_built=trued
+    routines_built=true
     top_action=setup_lane_action('top')
     mid_action=setup_lane_action('mid')
     bot_action=setup_lane_action('bot')
@@ -382,12 +382,16 @@ function _update60()
     coresume(top_action)
     coresume(mid_action)
     coresume(bot_action)
-    if #player_one_hand==0 then
-     game_state='deal_hand'
-    else
-     game_state='draw_one'
+    if costatus(top_action)=='dead' and
+       costatus(mid_action)=='dead' and
+       costatus(bot_action)=='dead' then
+     if #player_one_hand==0 then
+      game_state='deal_hand'
+     else
+      game_state='draw_one'
+     end
+     routines_built=false
     end
-    routines_built=false
    end
   end
  end
@@ -447,8 +451,8 @@ function _draw ()
  if held_card then
   cprint(held_card.name,64,120,10)
  end
- print(players[1].hp,2,2)
- print(players[2].hp,118,2)
+ print(player_one.hp,2,2)
+ print(player_two.hp,118,2)
 end
 
 function cprint(msg,x,y,c)
@@ -480,7 +484,7 @@ function filter(tbl,arg)
  return res
 end
 
-function play_cpu_card()
+function play_cpu_card ()
  local c=new_card(0,-30,'random',2)
  c.turned_over=false
  local found=nil
@@ -579,6 +583,7 @@ function setup_lane_action (lane_type)
  if player_one_mob and
     player_two_mob then
   atk_func=function()
+   printh('atk both')
    local p1_atk=player_one_mob.atk
    local p2_atk=player_two_mob.atk
    player_two_mob.hp-=p1_atk
@@ -586,25 +591,24 @@ function setup_lane_action (lane_type)
   end
  elseif player_one_mob then
   atk_func=function()
+   printh('atk p2')
    local p1_atk=player_one_mob.atk
-   players[2].hp-=p1_atk
+   player_two.hp-=p1_atk
   end
  elseif player_two_mob then
   atk_func=function()
+   printh('atk p1')
    local p2_atk=player_two_mob.atk
-   players[1].hp-=p2_atk
+   player_one.hp-=p2_atk
   end
  end
- printh('player_one_mob')
- printh(player_one_mob.id)
- printh('player_two_mob')
- printh(player_two_mob.id)
  return cocreate(function()
+  
   atk_func()
-  yield()
-  pre_atk_func()
-  yield()
-  post_atk_func()
+  --pre_atk_func()
+  --yield()
+  --yield()
+  --post_atk_func()
  end)
 end
 -->8
