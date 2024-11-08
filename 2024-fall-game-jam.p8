@@ -2,7 +2,7 @@ pico-8 cartridge // http://www.pico-8.com
 version 42
 __lua__
 function _init()
- state='game'
+ state='intro'
  game_state='deal_hand'
  dt=1/60
  -- setup mouse
