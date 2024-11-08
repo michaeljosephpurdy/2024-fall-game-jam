@@ -163,6 +163,7 @@ end
 function new_card (x,y,t,p)
  local card={
   p=p,
+  player=p,
   x=x,
   y=y,
   w=2*8,
@@ -263,7 +264,30 @@ function _update60 ()
    hover_lane=l
   end
  end)
- if state=='intro' then
+ if state=='you_win' then
+  if not game_over then
+   game_over=true
+   add(msgs,new_moving_msg(
+    'you win!',900,
+    64,20,
+    0,-.02,
+    8,2))
+  end
+ elseif state=='you_lose' then
+  if not game_over then
+   game_over=true
+   add(msgs,new_moving_msg(
+    'you lose!',900,
+    64,20,
+    0,-.02,
+    8,2))
+   add(msgs,new_moving_msg(
+    'try again',900,
+    64,30,
+    0,-.02,
+    8,2))
+  end
+ elseif state=='intro' then
   if not co_intro then
    co_intro=cocreate(function()
     add(msgs,new_moving_msg(
@@ -394,7 +418,7 @@ function _update60 ()
   if game_state=='deal_hand' then
    if #player_one_hand==0 then
     for i=0,3 do
-     local card=new_card(deck.x,deck.y,'random')
+     local card=new_card(deck.x,deck.y,'random',1)
      card.target_x=deck.x+i*20+20
      card.target_y=deck.y
      card.start_x=card.target_x
@@ -411,6 +435,7 @@ function _update60 ()
    end)
    if done then
     game_state='draw_one'
+    sfx(18)
    end
   elseif game_state=='draw_one' then
    game_state_msg='draw a card'
@@ -435,6 +460,7 @@ function _update60 ()
    game_state_msg='play a card'
    if click_on(skip_button) then
     play_cpu_card()
+    sfx(20)
     game_state='discard_one'
     found_monsters=false
    end
@@ -494,6 +520,7 @@ function _update60 ()
      play_cpu_card()
      -- is lane complete?
      game_state='discard_one'
+     sfx(19)
      found_monsters=false
     end)
     if held_card and not lane then
@@ -524,6 +551,7 @@ function _update60 ()
        l.body,
        l.legs
       )
+      sfx(21)
       add(msgs,
        new_moving_msg('its alive!',1.5,
        l.legs_x,l.y+2,
@@ -561,11 +589,13 @@ function _update60 ()
    end
    game_state_msg='discard a card'
    if hover_card and
+      hover_card.p==1 and
       not hover_card.placed and
       click_on(hover_card) then
     del(cards,hover_card)
     del(player_one_hand,hover_card)
     game_state='deal_damage'
+    sfx(22)
    end  
    for i,c in pairs(player_one_hand) do
      c.target_x=deck.x+i*20
@@ -591,37 +621,23 @@ function _update60 ()
       game_state='draw_one'
      end
      if player_one.hp<=0 then
-      game_state='you_lose'
+      state='you_lose'
      elseif player_two.hp<=0 then
-      game_state='you_win'
+      state='you_win'
      end
      routines_built=false
     end
    end
- elseif game_state=='you_win' then
-  if not game_over then
-   game_over=true
-   mobs={}
-   cards={}
-   distribute_mobs()
-  end
-  game_state_msg='you win!'
- elseif game_state=='you_lose' then
-  if not game_over then
-   game_over=true
-   mobs={}
-   cards={}
-   distribute_mobs()
-  end
-  game_state_msg='you lose!'
   end
  end
 end
 
 function _draw ()
- if state=='intro' then
+ if state=='intro' or
+    state=='you_lose' or
+    state=='you_win' then
   cls(0)
-  -- draw mouse
+  mouse:draw()
   foreach(msgs,draw)
  elseif state=='game' then
   cls(1)
@@ -809,6 +825,25 @@ function setup_mob_atk (lane_type)
   return empty_coroutine
  end
  local delay_func=function()
+  if p1m then
+   p1m.hp-=flr(p1m.hp*.2)
+   entity_hit(p1m)
+   if p1m.hp<=0 then
+    del(mobs,p1m)
+    p1m=nil
+   end
+  end
+  if p2m then
+   p2m.hp-=flr(p2m.hp*.2)
+   entity_hit(p2m)
+   if p2m.hp<=0 then
+    del(mobs,p2m)
+    p2m=nil
+   end
+  end
+  if not p1m or not p2m then
+   distribute_mobs()
+  end
   while delay>0 do
    delay-=dt
    yield()
@@ -839,6 +874,7 @@ function setup_mob_atk (lane_type)
    p1m.hp-=p2m.atk
    entity_hit(p1m)
    entity_hit(p2m)
+   sfx(16)
   end
   post_func=function()
    while flr(p1m.x)~=p1_start_x and
@@ -871,6 +907,7 @@ function setup_mob_atk (lane_type)
   atk_func=function()
    player_two.hp-=p1m.atk
    entity_hit(player_two)
+   sfx(17)
   end
   post_func=function()
    while flr(p1m.x)~=start_x do
@@ -892,6 +929,7 @@ function setup_mob_atk (lane_type)
   atk_func=function()
    player_one.hp-=p2m.atk
    entity_hit(player_one)
+   sfx(17)
   end
   post_func=function()
    while ceil(p2m.x)~=start_x do
@@ -1272,6 +1310,17 @@ __sfx__
 0118000024722247220c7320c7322b7222b72213732137322b7220c732247220f7322b7221373224722007022b7222b7222b7222b72224722247222472224722137421374200000007020c7420c7420000000000
 0118000000000000000000000000000000000000000000000000000000000000000000000000000000000000137321373213732137320c7320c7320c7320c7320c70200000287222872200000000000000000000
 000100000000000000000000000000000110501405016050170501b0501e0502005022050240502505027050290502c0502e05000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000300002a65027650226501d65018650126500e65009650046500365000600006000060000600006000060000600006000060000600006000060000600006000060000600006000060000600006000060000600
+000300002a15027150221501d15018150121500e15009150041500315000100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100
+000400000d0500d0500e050150501a050000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0004000015050110500e0500a0500a050000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0004000015150111500e1500a1500a150001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100
+00030000086500865008650086500865008650086500a6500c6500f65014650106500f6500e6500d6500e65011650166501b6501e650000000000000000000000000000000000000000000000000000000000000
+000200002055000000000001f55000000000001a5500000000000165501a500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __music__
 01 40454205
 01 41460305
@@ -1281,3 +1330,4 @@ __music__
 02 01060204
 02 41420204
 02 41424304
+
