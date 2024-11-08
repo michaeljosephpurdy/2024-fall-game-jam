@@ -530,22 +530,18 @@ function _update60 ()
   elseif game_state=='deal_damage' then
    if not routines_built then
     routines_built=true
-    top_action=setup_lane_action('top')
-    mid_action=setup_lane_action('mid')
-    bot_action=setup_lane_action('bot')
+    top_co=setup_mob_atk('top')
+    mid_co=setup_mob_atk('mid')
+    bot_co=setup_mob_atk('bot')
    else
-    coresume(top_action)
-    coresume(mid_action)
-    coresume(bot_action)
-    if costatus(top_action)=='dead' and
-       costatus(mid_action)=='dead' and
-       costatus(bot_action)=='dead' then
-     foreach(mobs,function(m)
-      if m.hp<=0 then
-       del(mobs,m)
-      end
-     end)
-     distribute_mobs()
+    coresume(top_co)
+    if costatus(top_co)=='dead' then
+     coresume(mid_co)
+    end
+    if costatus(mid_co)=='dead' then
+     coresume(bot_co)
+    end
+    if costatus(bot_co)=='dead' then
      if #player_one_hand==0 then
       game_state='deal_hand'
      else
@@ -559,7 +555,6 @@ function _update60 ()
      routines_built=false
     end
    end
-  
  elseif game_state=='you_win' then
   if not game_over then
    game_over=true
@@ -751,53 +746,123 @@ function contains(tbl,key)
  return false
 end
 
-function setup_lane_action (lane_type)
+function setup_mob_atk (lane_type)
  local empty_coroutine=cocreate(function()
  end)
- local player_one_mob=nil
- local player_two_mob=nil
+ local p1m=nil
+ local p2m=nil
+ local delay=1
  foreach(player_one_mobs,function(m)
   if m.t==lane_type then
-   player_one_mob=m
+   p1m=m
   end
  end)
  foreach(player_two_mobs,function(m)
   if m.t==lane_type then
-   player_two_mob=m
+   p2m=m
   end
  end)
- if not player_one_mob and
-    not player_two_mob then
+ if not p1m and not p2m then
   return empty_coroutine
  end
- if player_one_mob and
-    player_two_mob then
-  atk_func=function()
-   printh('atk both')
-   local p1_atk=player_one_mob.atk
-   local p2_atk=player_two_mob.atk
-   player_two_mob.hp-=p1_atk
-   player_one_mob.hp-=p2_atk
-   entity_hit(player_one_mob)
-   entity_hit(player_two_mob)
+ local delay_func=function()
+  while delay>0 do
+   delay-=dt
+   yield()
   end
- elseif player_one_mob then
+ end
+ local pre_func=function()
+ end
+ local atk_func=function()
+ end
+ local post_func=function()
+ end
+ if p1m and p2m then
+  printh('both atk')
+  local p1_start_x=p1m.x
+  local p1_target_x=p1m.x+10
+  local p2_start_x=p2m.x
+  local p2_target_x=p2m.x-10
+  pre_func=function()
+   while flr(p1m.x)~=p1_target_x and
+         flr(p2m.x)~=p2_target_x do
+    p1m.x=lerp(p1m.x,p1_target_x,1)
+    p2m.x=lerp(p2m.x,p2_target_x,1)
+    yield()
+   end
+  end
   atk_func=function()
-   printh('atk p2')
-   local p1_atk=player_one_mob.atk
-   player_two.hp-=p1_atk
+   p2m.hp-=p1m.atk
+   p1m.hp-=p2m.atk
+   entity_hit(p1m)
+   entity_hit(p2m)
+  end
+  post_func=function()
+   while flr(p1m.x)~=p1_start_x and
+         flr(p2m.x)~=p2_start_x do
+    p1m.x=lerp(p1m.x,p1_start_x,1/7)
+    p2m.x=lerp(p2m.x,p2_start_x,1/7)
+    yield()
+   end
+   p1m.x=p1_start_x
+   p2m.x=p2_start_x
+   if p1m.hp<=0 then
+    del(mobs,p1m)
+    distribute_mobs()
+   end
+   if p2m.hp<=0 then
+    del(mobs,p2m)
+    distribute_mobs()
+   end
+  end
+ elseif p1m then
+  printh('p1 atk')
+  local start_x=p1m.x
+  local target_x=p1m.x+20
+  pre_func=function()
+   while flr(p1m.x)~=target_x do
+    p1m.x=lerp(p1m.x,target_x,1)
+    yield()
+   end
+  end
+  atk_func=function()
+   player_two.hp-=p1m.atk
    entity_hit(player_two)
   end
- elseif player_two_mob then
+  post_func=function()
+   while flr(p1m.x)~=start_x do
+    p1m.x=lerp(p1m.x,start_x,1/7)
+    yield()
+   end
+   p1m.x=start_x
+  end
+ elseif p2m then
+  printh('p2 atk')
+  local start_x=p2m.x
+  local target_x=p2m.x-20
+  pre_func=function()
+   while flr(p2m.x)~=target_x do
+    p2m.x=lerp(p2m.x,target_x,1)
+    yield()
+   end
+  end
   atk_func=function()
-   printh('atk p1')
-   local p2_atk=player_two_mob.atk
-   player_one.hp-=p2_atk
+   player_one.hp-=p2m.atk
    entity_hit(player_one)
+  end
+  post_func=function()
+   while flr(p2m.x)~=start_x do
+    p2m.x=lerp(p2m.x,start_x,1/7)
+    yield()
+   end
+   p2m.x=start_x
   end
  end
  return cocreate(function()
+  delay_func()
+  pre_func()
   atk_func()
+  post_func()
  end)
 end
 
