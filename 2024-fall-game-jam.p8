@@ -298,17 +298,35 @@ function _update60 ()
      yield()
     end
     add(msgs,new_moving_msg(
-     'you must draw.',6,
+     'these creations are',6,
+     64,60,
+     0,-.02,
+     8,2))
+    add(msgs,new_moving_msg(
+     'imperfect, and will',7,
+     64,70,
+     0,-.02,
+     8,2))
+    add(msgs,new_moving_msg(
+     'slowly pass on.',8,
+     64,80,
+     0,-.02,
+     8,2))
+    while #msgs>0 do
+     yield()
+    end
+    add(msgs,new_moving_msg(
+     'you must draw one.',6,
      64,20,
      0,0,
      8,2))
     add(msgs,new_moving_msg(
-     'you may cast.',8,
+     'you may play one.',8,
      64,60,
      0,0,
      8,2))
     add(msgs,new_moving_msg(
-     'you must shed.',10,
+     'you must discard one.',10,
      64,100,
      0,0,
      8,2))
