@@ -23,25 +23,28 @@ function _init()
  }
  mobs={
  }
+ msgs={}
  player_one_hand={}
  player_two_hand={}
- player_one_lanes={
-  new_lane('top',1),
-  new_lane('mid',1),
-  new_lane('bot',1),
+ player_one_card_lanes={
+  new_card_lane('top',1),
+  new_card_lane('mid',1),
+  new_card_lane('bot',1),
  }
- player_two_lanes={
-  new_lane('top',2),
-  new_lane('mid',2),
-  new_lane('bot',2),
+ player_two_card_lanes={
+  new_card_lane('top',2),
+  new_card_lane('mid',2),
+  new_card_lane('bot',2),
  }
- lanes={}
- foreach(player_one_lanes,function(l)
-  add(lanes,l)
+ card_lanes={}
+ foreach(player_one_card_lanes,function(l)
+  add(card_lanes,l)
  end)
- foreach(player_two_lanes,function(l)
-  add(lanes,l)
+ foreach(player_two_card_lanes,function(l)
+  add(card_lanes,l)
  end)
+ player_one_mobs={}
+ player_two_mobs={}
  deck=new_deck(1)
  smokes={}
 end
@@ -53,7 +56,8 @@ function new_smoke (x,y)
   dy=rnd(1)-1,
  }
 end
-function new_lane (t,p)
+
+function new_card_lane (t,p)
  local lane={
   head=nil,
   body=nil,
@@ -62,33 +66,38 @@ function new_lane (t,p)
   player=p,
   id=rnd()*1000,
  }
- lane.x=10
- lane.w=50
+ lane.x=2
+ lane.w=45
  lane.h=20
  lane.t=t
  lane[t]=true
  if lane.player==2 then
-  lane.x+=55
+  lane.x+=77
  end
  lane.head_x=lane.x
- lane.body_x=lane.x+20
- lane.legs_x=lane.x+40
+ lane.body_x=lane.x+16
+ lane.legs_x=lane.x+32
  if t=='top' then
   lane.y=10
-  lane.mob_x=lane.head_x
-  lane.mob_y=lane.y+20
  elseif t=='mid' then
   lane.y=40
-  lane.mob_x=lane.body_x
-  lane.mob_y=lane.y
  elseif t=='bot' then
   lane.y=70
-  lane.mob_x=lane.leg_x
-  lane.mob_y=lane.y-20
  end
  return lane
 end
-function new_mob (x,y,p,t,head,body,legs)
+function new_mob (p,t,head,body,legs)
+ local x,y=48,0
+ if p==2 then
+  x+=20
+ end
+ if t=='top' then
+  y=10
+ elseif t=='mid' then
+  y=40
+ elseif t=='bot' then
+  y=60
+ end
  local hp=head.hp+body.hp+legs.hp
  local atk=head.atk+body.atk+legs.atk
  return {
@@ -99,7 +108,9 @@ function new_mob (x,y,p,t,head,body,legs)
   legs=legs.s,
   player=p,
   t=t,
+  [t]=t,
   hp=hp,
+  max_hp=hp,
   atk=atk,
   id=rnd()*1000,
   draw=function(self)
@@ -110,6 +121,16 @@ function new_mob (x,y,p,t,head,body,legs)
    spr(self.head,self.x,self.y,2,2,flip_h)
    spr(self.body,self.x,self.y+16,2,2,flip_h)
    spr(self.legs,self.x,self.y+24,2,2,flip_h)
+  end,
+  draw_stats=function(self)
+   ocprint('♥'..self.hp,
+           self.x+4,
+           self.y+16,
+           8,0)
+   ocprint(self.atk..'!',
+           self.x+6,
+           self.y+22,
+           12,1)
   end,
  }
 end
@@ -148,7 +169,7 @@ function new_card (x,y,t,p)
    -- draw bottom
    spr(3,self.x,self.y+16,2,1)
    print(self.hp,self.x+5,self.y+17,1)
-   print(self.hp,self.x+12,self.y+17,1)
+   print(self.atk,self.x+12,self.y+17,1)
    -- draw sprite
    palt(0,false)
    palt(14,true)
@@ -181,7 +202,7 @@ end
 function new_player (num)
  return {
   num=num,
-  hp=20,
+  hp=100,
  }
 end
 function collide (e1,e2)
@@ -198,7 +219,8 @@ function _update60()
  show_skip_button=false
  mouse.x=stat(32)
  mouse.y=stat(33)
- foreach(lanes,function(l)
+ foreach(msgs,update)
+ foreach(card_lanes,function(l)
   if collide(mouse,l) then
    hover_lane=l
   end
@@ -276,7 +298,7 @@ function _update60()
        held_card=c
        held_offset_x=mouse.x-c.x
        held_offset_y=mouse.y-c.y
-       foreach(lanes,function(l)
+       foreach(card_lanes,function(l)
         l.valid=false
         if l.player==2 then
          return
@@ -294,7 +316,7 @@ function _update60()
     end
    else
     local lane=nil
-    foreach(lanes,function(l)
+    foreach(card_lanes,function(l)
      if not l.valid then
       return
      end
@@ -326,7 +348,7 @@ function _update60()
     end
     held_card=nil
     valid_spots=nil
-    foreach(lanes,function(l)
+    foreach(card_lanes,function(l)
      l.valid=false
     end)
     spr(1,mouse.x,mouse.y)
@@ -335,30 +357,43 @@ function _update60()
     -- make all monsters
     if not found_monsters then
      found_monsters=true
-     foreach(lanes,function(l)
-     if l.mob then
-      return
-     end
-     if not (l.head and
-             l.body and
-             l.legs) then
-      return
-     end
-     local mob=new_mob(
-      l.mob_x,
-      l.mob_y,
-      l.player,
-      l.t,
-      l.head,
-      l.body,
-      l.legs
-     )
-     del(cards,l.head)
-     del(cards,l.body)
-     del(cards,l.legs)
-     add(mobs,mob)
-     l.mob=mob
-     mob.lane=l
+     foreach(card_lanes,function(l)
+      if not (l.head and
+              l.body and
+              l.legs) then
+       return
+      end
+      local mob=new_mob(
+       l.player,
+       l.t,
+       l.head,
+       l.body,
+       l.legs
+      )
+      add(msgs,new_moving_msg('its alive!',l.legs_x,l.y+10))
+      -- delete the cards
+      del(cards,l.head)
+      del(cards,l.body)
+      del(cards,l.legs)
+      -- reset the lane
+      l.head=nil
+      l.body=nil
+      l.legs=nil
+      -- find any existing mob
+      local existing=nil
+      foreach(mobs,function(m)
+       if mob.player==m.player and
+          mob.t==m.t then
+        existing=m
+       end
+      end)
+      -- remove the mob
+      if existing then
+       del(mobs,existing)
+      end
+      -- add new mob
+      add(mobs,mob)
+      distribute_mobs()
     end)
    end
    game_state_msg='discard a card'
@@ -385,21 +420,49 @@ function _update60()
     if costatus(top_action)=='dead' and
        costatus(mid_action)=='dead' and
        costatus(bot_action)=='dead' then
+     foreach(mobs,function(m)
+      if m.hp<=0 then
+       del(mobs,m)
+      end
+     end)
+     distribute_mobs()
      if #player_one_hand==0 then
       game_state='deal_hand'
      else
       game_state='draw_one'
      end
+     if player_one.hp<=0 then
+      game_state='you_lose'
+     elseif player_two.hp<=0 then
+      game_state='you_win'
+     end
      routines_built=false
     end
    end
+  
+ elseif game_state=='you_win' then
+  if not game_over then
+   game_over=true
+   mobs={}
+   cards={}
+   distribute_mobs()
+  end
+  game_state_msg='you win!'
+ elseif game_state=='you_lose' then
+  if not game_over then
+   game_over=true
+   mobs={}
+   cards={}
+   distribute_mobs()
+  end
+  game_state_msg='you lose!'
   end
  end
 end
 
 function _draw ()
  cls(1)
- foreach(lanes,function(lane)
+ foreach(card_lanes,function(lane)
   if lane==hover_lane and
      lane.player==1 then
    color(7)
@@ -419,11 +482,13 @@ function _draw ()
  if show_skip_button then
   skip_button:draw()
  end
- foreach(cards,function(c)
-  c:draw()
- end)
+ -- draw mobs in-order
+ foreach(filter(mobs,'top'),draw)
+ foreach(filter(mobs,'mid'),draw)
+ foreach(filter(mobs,'bot'),draw)
+ foreach(cards,draw)
  foreach(mobs,function(m)
-  m:draw()
+  m:draw_stats()
  end)
  if held_card then
   rectfill(held_card.x+1,
@@ -440,23 +505,36 @@ function _draw ()
   spr(1,mouse.x,mouse.y)
  end
  if game_state_msg then
-  cprint(game_state_msg,64,
-         sin(time())+.1+2,10)
+  ocprint(game_state_msg,64,
+         sin(time())+.1+3,10,2)
  end
  if hover_card and
     not hover_card.turned_over and
     not held_card then
-  cprint(hover_card.name,64,122, 10)
+  ocprint(hover_card.name,64,122,10,0)
  end
  if held_card then
   cprint(held_card.name,64,120,10)
  end
- print(player_one.hp,2,2)
- print(player_two.hp,118,2)
+ ocprint('p1 ♥'..player_one.hp,17,2,8,0)
+ ocprint('p2 ♥'..player_two.hp,107,2,8,0)
+ foreach(msgs,draw)
 end
 
 function cprint(msg,x,y,c)
  print(msg,x-#msg*2,y,c)
+end
+function ocprint(msg,x,y,c,oc)
+ cprint(msg,x-1,y-1,oc)
+ cprint(msg,x-1,y,oc)
+ cprint(msg,x-1,y+1,oc)
+ cprint(msg,x,  y-1,oc)
+ cprint(msg,x,  y,oc)
+ cprint(msg,x,  y+1,oc)
+ cprint(msg,x+1,y-1,oc)
+ cprint(msg,x+1,y,oc)
+ cprint(msg,x+1,y+1,oc)
+ cprint(msg,x,y,c)
 end
 
 function lerp(a,b,t)
@@ -468,7 +546,7 @@ function click_on(obj)
         collide(mouse,obj)
 end
 
-function filter(tbl,arg)
+function filter (tbl,arg)
  local fn=arg
  if type(arg)=='string' then
   fn=function(i)
@@ -491,7 +569,7 @@ function play_cpu_card ()
  local checked={}
  while true do
   -- get a random lane
-  local l=rnd(player_two_lanes)
+  local l=rnd(player_two_card_lanes)
   -- if the card can fit in lane
   -- use it
   if c.head and not l.head then
@@ -512,7 +590,7 @@ function play_cpu_card ()
   add(checked,l)
   -- if we've checked all lanes
   -- then stop looking
-  if #checked==#player_two_lanes then
+  if #checked==#player_two_card_lanes then
    break
   end
  end
@@ -542,31 +620,20 @@ function contains(tbl,key)
 end
 
 function setup_lane_action (lane_type)
- printh('looking for '..lane_type)
  local empty_coroutine=cocreate(function()
-  printh('empty coroutine')
  end)
- local player_one_lane=nil
- local player_two_lane=nil
- foreach(lanes,function(l)
-  if l.t==lane_type then
-   if l.player==1 then
-    player_one_lane=l
-   else
-    player_two_lane=l
-   end
+ local player_one_mob=nil
+ local player_two_mob=nil
+ foreach(player_one_mobs,function(m)
+  if m.t==lane_type then
+   player_one_mob=m
   end
  end)
- printh('player_one_lane')
- printh(player_one_lane.id)
- printh('player_two_lane')
- printh(player_two_lane.id)
- if not player_one_lane or
-    not player_two_lane then
-  return empty_coroutine
- end
- local player_one_mob=player_one_lane.mob
- local player_two_mob=player_two_lane.mob
+ foreach(player_two_mobs,function(m)
+  if m.t==lane_type then
+   player_two_mob=m
+  end
+ end)
  if not player_one_mob and
     not player_two_mob then
   return empty_coroutine
@@ -603,7 +670,6 @@ function setup_lane_action (lane_type)
   end
  end
  return cocreate(function()
-  
   atk_func()
   --pre_atk_func()
   --yield()
@@ -611,48 +677,99 @@ function setup_lane_action (lane_type)
   --post_atk_func()
  end)
 end
+
+function draw(e)
+ e:draw()
+end
+function update(e)
+ e:update()
+end
+
+function distribute_mobs ()
+ player_one_mobs={}
+ player_two_mobs={}
+ foreach(mobs,function(m)
+  if m.player==1 then
+   add(player_one_mobs,m)
+  else
+   add(player_two_mobs,m)
+  end
+ end)
+end
+
+function new_moving_msg (msg,x,y)
+ local ttl=1.5
+ local dx,dy=0,0
+ local c,oc=10,9
+ if msg=='its alive!' then
+  dy=-.2
+  c=11
+  oc=2
+ end
+ return {
+  msg=msg,
+  ttl=ttl,
+  x=x,
+  y=y,
+  dx=dx,
+  dy=dy,
+  c=c,
+  oc=oc,
+  update=function(self)
+   self.x+=self.dx
+   self.y+=self.dy
+   self.ttl-=1/60
+   if self.ttl<0 then
+    del(msgs,self)
+   end
+  end,
+  draw=function(self)
+   ocprint(self.msg,self.x,self.y,self.c,self.oc)
+  end,
+ }
+end
 -->8
 card_data={
  frank_head={
   name='frankenstein - head',
   s=16,
-  hp=2,
-  atk=2,
+  hp=4,
+  atk=1,
   head=true,
  },
  frank_body={
   name='frankenstein - body',
   s=18,
-  hp=2,
+  hp=5,
   atk=2,
   body=true,
  },
  frank_legs={
   name='frankenstein - legs',
   s=20,
-  hp=2,
-  atk=2,
+  hp=4,
+  atk=3,
   legs=true,
  },
  drac_head={
   name='dracula - head',
   s=22,
-  hp=5,
-  atk=2,
+  hp=3,
+  atk=3,
   head=true,
  },
  drac_body={
   name='dracula - body',
   s=24,
-  hp=5,
+  hp=3,
   atk=2,
   body=true,
  },
  drac_legs={
   name='dracula - legs',
   s=26,
-  hp=5,
-  atk=2,
+  hp=2,
+  atk=0,
   legs=true,
  },
 }
