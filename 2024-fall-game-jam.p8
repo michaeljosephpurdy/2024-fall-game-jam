@@ -476,6 +476,8 @@ function _update60 ()
       if not c.placed and
          c==hover_card then
        held_card=c
+       held_card.start_x=c.x
+       held_card.start_y=c.y
        held_offset_x=mouse.x-c.x
        held_offset_y=mouse.y-c.y
        foreach(card_lanes,function(l)
