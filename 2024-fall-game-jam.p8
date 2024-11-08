@@ -784,7 +784,7 @@ function setup_mob_atk (lane_type)
   local p2_start_x=p2m.x
   local p2_target_x=p2m.x-10
   pre_func=function()
-   while flr(p1m.x)~=p1_target_x and
+   while ceil(p1m.x)~=p1_target_x and
          flr(p2m.x)~=p2_target_x do
     p1m.x=lerp(p1m.x,p1_target_x,1)
     p2m.x=lerp(p2m.x,p2_target_x,1)
@@ -799,7 +799,7 @@ function setup_mob_atk (lane_type)
   end
   post_func=function()
    while flr(p1m.x)~=p1_start_x and
-         flr(p2m.x)~=p2_start_x do
+         ceil(p2m.x)~=p2_start_x do
     p1m.x=lerp(p1m.x,p1_start_x,1/7)
     p2m.x=lerp(p2m.x,p2_start_x,1/7)
     yield()
@@ -820,7 +820,7 @@ function setup_mob_atk (lane_type)
   local start_x=p1m.x
   local target_x=p1m.x+20
   pre_func=function()
-   while flr(p1m.x)~=target_x do
+   while ceil(p1m.x)~=target_x do
     p1m.x=lerp(p1m.x,target_x,1)
     yield()
    end
@@ -851,7 +851,7 @@ function setup_mob_atk (lane_type)
    entity_hit(player_one)
   end
   post_func=function()
-   while flr(p2m.x)~=start_x do
+   while ceil(p2m.x)~=start_x do
     p2m.x=lerp(p2m.x,start_x,1/7)
     yield()
    end
