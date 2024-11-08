@@ -2,10 +2,23 @@ pico-8 cartridge // http://www.pico-8.com
 version 42
 __lua__
 function _init()
- state='intro'
+ state='game'
+ game_state='deal_hand'
+ dt=1/60
  -- setup mouse
  poke(0x5f2d, 1)
- mouse={}
+ mouse={
+  x=0,
+  y=0,
+  draw=function(self)
+   palt()
+   if stat(34)==1 then
+    spr(2,self.x,self.y)
+   else
+    spr(1,self.x,self.y)
+   end
+  end,
+ }
  player_one=new_player(1)
  player_two=new_player(2)
  skip_button={
@@ -45,6 +58,7 @@ function _init()
  player_two_mobs={}
  deck=new_deck(1)
  smokes={}
+ timed_functions={}
 end
 function new_smoke (x,y)
  return {
@@ -98,9 +112,13 @@ function new_mob (p,t,head,body,legs)
  end
  local hp=head.hp+body.hp+legs.hp
  local atk=head.atk+body.atk+legs.atk
+ local name=head.desc..body.desc..legs.desc
  return {
+  name=name,
   x=x,
   y=y,
+  w=16,
+  h=48,
   head=head.s,
   body=body.s,
   legs=legs.s,
@@ -110,15 +128,24 @@ function new_mob (p,t,head,body,legs)
   hp=hp,
   max_hp=hp,
   atk=atk,
+  hit=false,
   id=rnd()*1000,
+  get_stats=function(self)
+   return self.name.. ' ♥'..self.hp..' '..self.atk..'!'
+  end,
   draw=function(self)
+   local ox,oy=0,0
+   if self.hit then
+    ox=rnd(2)-1
+    oy=rnd(2)-1
+   end
    palt()
    palt(0,false)
    palt(14,true)
    local flip_h=p==2
-   spr(self.head,self.x,self.y,2,2,flip_h)
-   spr(self.body,self.x,self.y+16,2,2,flip_h)
-   spr(self.legs,self.x,self.y+24,2,2,flip_h)
+   spr(self.head,self.x+ox,self.y+oy,2,2,flip_h)
+   spr(self.body,self.x+ox,self.y+15+oy,2,2,flip_h)
+   spr(self.legs,self.x+ox,self.y+30+oy,2,2,flip_h)
   end,
   draw_stats=function(self)
    ocprint('♥'..self.hp,
@@ -141,6 +168,9 @@ function new_card (x,y,t,p)
   h=3*8,
   placed=false,
   turned_over=true,
+  get_stats=function(self)
+   return self.name..' ♥'..self.hp..' '..self.atk..'!'
+  end,
   draw=function(self) 
    palt()
    if self.turned_over then
@@ -201,6 +231,7 @@ function new_player (num)
  return {
   num=num,
   hp=100,
+  hit=false,
  }
 end
 function collide (e1,e2)
@@ -210,14 +241,22 @@ function collide (e1,e2)
         e1.y<e2.y+(e2.h or 0)
 end
 
-function _update60()
+function _update60 ()
  game_state_msg=nil
  hover_card=nil
  hover_lane=nil
+ hover_mob=nil
  show_skip_button=false
  mouse.x=stat(32)
  mouse.y=stat(33)
  foreach(msgs,update)
+ foreach(timed_functions,function(tfn)
+  tfn.ttl-=dt
+  if tfn.ttl<0 then
+   tfn.fn()
+   del(timed_functions,tfn)
+  end
+ end)
  foreach(card_lanes,function(l)
   if collide(mouse,l) then
    hover_lane=l
@@ -292,6 +331,11 @@ function _update60()
    game_state='deal_hand'
   end
  elseif state=='game' then
+  foreach(mobs,function(m)
+   if collide(mouse,m) then
+    hover_mob=m
+   end
+  end)
   foreach(cards,function(c)
    if c.target_x then
     c.x=lerp(c.x,c.target_x,1/20)
@@ -347,6 +391,7 @@ function _update60()
    show_skip_button=true
    game_state_msg='play a card'
    if click_on(skip_button) then
+    play_cpu_card()
     game_state='discard_one'
     found_monsters=false
    end
@@ -438,6 +483,11 @@ function _update60()
       )
       add(msgs,
        new_moving_msg('its alive!',1.5,
+       l.legs_x,l.y+2,
+       0,-0.2,
+       11,2))
+      add(msgs,
+       new_moving_msg(mob.name,1.5,
        l.legs_x,l.y+10,
        0,-0.2,
        11,2))
@@ -534,11 +584,6 @@ function _draw ()
  if state=='intro' then
   cls(0)
   -- draw mouse
-  if stat(34)==1 then
-   spr(2,mouse.x,mouse.y)
-  else
-   spr(1,mouse.x,mouse.y)
-  end
   foreach(msgs,draw)
  elseif state=='game' then
   cls(1)
@@ -567,9 +612,6 @@ function _draw ()
   foreach(filter(mobs,'mid'),draw)
   foreach(filter(mobs,'bot'),draw)
   foreach(cards,draw)
-  foreach(mobs,function(m)
-   m:draw_stats()
-  end)
   if held_card then
    rectfill(held_card.x+1,
             held_card.y+1,
@@ -578,26 +620,35 @@ function _draw ()
    held_card:draw()
   end
   palt()
-  -- draw mouse
-  if stat(34)==1 then
-   spr(2,mouse.x,mouse.y)
-  else
-   spr(1,mouse.x,mouse.y)
-  end
+  mouse:draw()
   if game_state_msg then
    ocprint(game_state_msg,64,
           sin(time())+.1+3,10,2)
   end
-  if hover_card and
+  if hover_mob then
+   hover_mob:draw()
+   ocprint(hover_mob:get_stats(),64,122,10,0)
+   mouse:draw()
+  elseif hover_card and
      not hover_card.turned_over and
      not held_card then
-   ocprint(hover_card.name,64,122,10,0)
+   ocprint(hover_card:get_stats(),64,122,10,0)
   end
   if held_card then
    cprint(held_card.name,64,120,10)
   end
-  ocprint('p1 ♥'..player_one.hp,17,2,8,0)
-  ocprint('p2 ♥'..player_two.hp,107,2,8,0)
+  local p1_hp_x,p1_hp_y=17,2
+  local p2_hp_x,p2_hp_y=107,2
+  if player_one.hit then
+   p1_hp_x-=rnd(2)-1
+   p1_hp_y-=rnd(2)-1
+  end
+  if player_two.hit then
+   p2_hp_x-=rnd(2)-1
+   p2_hp_y-=rnd(2)-1
+  end
+  ocprint('p1 ♥'..player_one.hp,p1_hp_x,p1_hp_y,8,0)
+  ocprint('p2 ♥'..player_two.hp,p2_hp_x,p2_hp_y,8,0)
   foreach(msgs,draw)
  end
 end
@@ -719,15 +770,6 @@ function setup_lane_action (lane_type)
     not player_two_mob then
   return empty_coroutine
  end
- local pre_atk_func=function()
-  printh('pre-atk')
- end
- local atk_func=function()
-  printh('atk')
- end
- local post_atk_func=function()
-  printh('post-atk')
- end
  if player_one_mob and
     player_two_mob then
   atk_func=function()
@@ -736,26 +778,26 @@ function setup_lane_action (lane_type)
    local p2_atk=player_two_mob.atk
    player_two_mob.hp-=p1_atk
    player_one_mob.hp-=p2_atk
+   entity_hit(player_one_mob)
+   entity_hit(player_two_mob)
   end
  elseif player_one_mob then
   atk_func=function()
    printh('atk p2')
    local p1_atk=player_one_mob.atk
    player_two.hp-=p1_atk
+   entity_hit(player_two)
   end
  elseif player_two_mob then
   atk_func=function()
    printh('atk p1')
    local p2_atk=player_two_mob.atk
    player_one.hp-=p2_atk
+   entity_hit(player_one)
   end
  end
  return cocreate(function()
   atk_func()
-  --pre_atk_func()
-  --yield()
-  --yield()
-  --post_atk_func()
  end)
 end
 
@@ -801,91 +843,113 @@ function new_moving_msg (msg,ttl,x,y,dx,dy,c,oc)
   end,
  }
 end
+
+function entity_hit (e)
+ e.hit=true
+ add(timed_functions,{
+  ttl=1,
+  fn=function()
+   e.hit=false
+  end,
+ })
+end
 -->8
 card_data={
  frank_head={
-  name='frankenstein - head',
-  s=16,
+  name='frankenstein head',
+  s=70,
   hp=4,
   atk=1,
   head=true,
+  desc='fran',
  },
  frank_body={
-  name='frankenstein - body',
-  s=18,
+  name='frankenstein body',
+  s=72,
   hp=5,
   atk=2,
   body=true,
+  desc='ken',
  },
  frank_legs={
-  name='frankenstein - legs',
-  s=20,
+  name='frankenstein legs',
+  s=74,
   hp=4,
   atk=3,
   legs=true,
+  desc='stien',
  },
  drac_head={
-  name='dracula - head',
-  s=22,
+  name='dracula head',
+  s=64,
   hp=3,
   atk=3,
   head=true,
+  desc='dra',
  },
  drac_body={
-  name='dracula - body',
-  s=24,
+  name='dracula body',
+  s=66,
   hp=3,
   atk=2,
   body=true,
+  desc='cu',
  },
  drac_legs={
-  name='dracula - legs',
-  s=26,
+  name='dracula legs',
+  s=68,
   hp=2,
   atk=0,
   legs=true,
+  desc='la',
  },
  wolf_head={
- 	name='werewolf - head',
+ 	name='werewolf head',
  	s=76,
  	hp=3,
  	atk=2,
  	head=true,
+ 	desc='wer',
 	},
 	wolf_body={
- 	name='werewolf - body',
+ 	name='werewolf body',
  	s=78,
  	hp=4,
  	atk=3,
  	body=true,
+ 	desc='ew',
 	},
 	wolf_legs={
- 	name='werewolf - legs',
+ 	name='werewolf legs',
  	s=110,
  	hp=3,
  	atk=2,
  	legs=true,
+ 	desc='olf',
 	},
 	pump_head={
- 	name='pumpkin - head',
+ 	name='pumpkin head',
  	s=96,
  	hp=2,
  	atk=3,
  	head=true,
+ 	desc='pu',
 	},
 		pump_body={
- 	name='pumpkin - body',
- 	s=86,
+ 	name='pumpkin body',
+ 	s=98,
  	hp=1,
  	atk=4,
  	body=true,
+ 	desc='mpk',
 	},
 		pump_legs={
- 	name='pumpkin - legs',
+ 	name='pumpkin legs',
  	s=100,
  	hp=1,
  	atk=3,
  	legs=true,
+ 	desc='in',
 	}
 }
 card_types={}
@@ -925,38 +989,38 @@ eeeeeeebbbeeeeeeeeeeee7777eeeeeeeeeee444441444eeeeeeeee77eeeeeeeeeeeee000eeeeeee
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-88888888888888888888888888888888888222277222288844444444444444444444444444444444444111144111144411141111111141111111111111111111
-88888800008888888888800000088888888000000000088844000000000000444441111555114444444111144111144411404144441404111111444444441111
-8888000000008888888009000090088888800000000008884000000b0b0000044111111555111114444111144111144411404444444404111144444444444411
-88800000000008888800a077770a00888880000000000888400b0b0bbb0b00041111115555111111444111144111144414444444444444411444444444444441
-880000000000008880aa08877880aa088880500880050888400bbbbbbbbbb00411111155551111114441111441111444144444444444444144fff444444fff44
-f80000000000008f0550082882800550888050088005088840bbbbbbbbbbbb041111100555111111444111144111144414444444444444414ffffff44ffffff4
-f000ff0000ff000f05500882288005508880500880050888b0bbbbbbbbbbbb0b1110115555110111444111144111144414449944449944414ffffffffffffff4
-f00ffff00ffff00f05500087780005508880500880050888b3bb33333333bb3b1110115555110111444111144111144414444994499444414ffffffffffffff4
-f00f00ffff00f00f055000777700055088805008800508884b3b300bb003b3b41110100555110111444111144111144414444444444444414ffffffffffffff4
-80ff780ff087ff0805500077770005508880500880050888443bb00bb00bb34411101155551101114441111441111444144444400444444144ffffffffffff44
-88ff788ff887ff8805550077770055508880500880050888444bbbbbbbbbb44411101155551101114441111441111444114444444444441144ffffffffffff44
-88ffffffffffff8805557077770755508880500880050888444bbbbbbbbbb444111010055511011144411114411114441144407447044411144ffffffffff441
-888ff07ff70ff88805555777777555508887000880007888444bbb2222bbb4441110115555110111455001144110055411144007700441111144ffffffff4411
-8888f070070f8888805555777755550880007778877700084464bb2222bb46444441115555111444500500044000500511144700007441111144ffffffff4411
-88888f0000f888888800555555550088000000088000000044665b2bb2b5664444411155551114440000000440000000111144777744111111144ffffff44111
-888888ffff8888888888000000008888000000088000000044644bbbbbb44644444111555511144400000004400000001111144444411111111144ffff441111
-dddddddd44ddddddddddddddddddddddddddd445444ddddd00000000000000000000000000000000000000000000000000000000000000001144444114444411
-ddddddd444ddddddddd5d44d454ddddddddd44544444dddd00000000000000000000000000000000000000000000000000000000000000001444441111444441
-dd9999d44d9999dddd544444554ddddddddd554ddd44dddd00000000000000000000000000000000000000000000000000000000000000001444411111144441
-d99999944999999ddd44d44445454dddddd544dddd444ddd00000000000000000000000000000000000000000000000000000000000000004444111111114444
-9999999999999999dd45d404445454dddddd44ddddd44ddd00000000000000000000000000000000000000000000000000000000000000004444111111114444
-9999999999999999d45dd440404d544dddddd445ddd44ddd00000000000000000000000000000000000000000000000000000000000000004444411111144444
-9999a999999a9999d5dddd40004d5d4ddddd4445ddd44ddd00000000000000000000000000000000000000000000000000000000000000001444441111444441
-999aaa9999aaa99954dddd4404dddd4dddddd45dddd44ddd00000000000000000000000000000000000000000000000000000000000000001114444114444111
-999aaaa99aaaa999d45ddd4004dddd4dddddd54dddd44ddd00000000000000000000000000000000000000000000000000000000000000001111444114441111
-9999aa9999aa9999d45ddd0404dddd4ddddd54dddd44dddd00000000000000000000000000000000000000000000000000000000000000001111444114441111
-9999999999999999d544dd44454dd4d4dddd54dddd44dddd00000000000000000000000000000000000000000000000000000000000000001111444114441111
-999aaa999999aa99d45d4d44544dd4d4dddd44dddd4ddddd00000000000000000000000000000000000000000000000000000000000000001114441111444111
-d9a9aaa9a9aaa99dd4d5dd45454d4d4dd4ddd44ddd4ddddd00000000000000000000000000000000000000000000000000000000000000001114441111444111
-d9999aaaaaaa999dddd5d44544dddddd4d4dd44ddd44dd4d00000000000000000000000000000000000000000000000000000000000000001144411111144411
-dd9999a9aa9a99dddd5dd44544dddddd4ddd44ddddd44dd400000000000000000000000000000000000000000000000000000000000000001444411111144441
-dddd99999999ddddddddd4544dddddddd4444dddddd4444d00000000000000000000000000000000000000000000000000000000000000000404111111114040
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee2222772222eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee01111ee11110eeeee4eeeeeeee4eeeeeeeeeeeeeeeeeee
+eeeeee0000eeeeeeeeeee000000eeeeeeee0000000000eeeee000000000000eeeee111155511eeeeee01111ee11110eeee404e4444e404eeeeee44444444eeee
+eeee00000000eeeeeee0090000900eeeeee0000000000eeee000000b0b00000ee11111155511111eee01111ee11110eeee404444444404eeee444444444444ee
+eee0000000000eeeee00a077770a00eeeee0000000000eeee00b0b0bbb0b000e1111115555111111ee01111ee11110eee44444444444444ee44444444444444e
+ee000000000000eee0aa08877880aa0eeee0500ee0050eeee00bbbbbbbbbb00e1111115555111111ee01111ee11110eee44444444444444e44fff444444fff44
+fe000000000000ef0550082882800550eee0500ee0050eeee0bbbbbbbbbbbb0e1111100555111111ee01111ee11110eee44444444444444e4ffffff44ffffff4
+f000ff0000ff000f0550088228800550eee0500ee0050eeeb0bbbbbbbbbbbb0b1110115555110111ee01111ee11110eee44499444499444e4ffffffffffffff4
+f00ffff00ffff00f0550008778000550eee0500ee0050eeeb3bb33333333bb3b1110115555110111ee01111ee11110eee44449944994444e4ffffffffffffff4
+f00f00ffff00f00f0550007777000550eee0500ee0050eeeeb3b300bb003b3be1110100555110111ee01111ee11110eee44444444444444e4ffffffffffffff4
+e0ff780ff087ff0e0550007777000550eee0500ee0050eeeee3bb00bb00bb3ee1110115555110111ee01111ee11110eee44444400444444e44ffffffffffff44
+eeff788ff887ffee0555007777005550eee0500ee0050eeeeeebbbbbbbbbbeee1110115555110111ee01111ee11110eeee444444444444ee44ffffffffffff44
+eeffffffffffffee0555707777075550eee0500ee0050eeeeeebbbbbbbbbbeee1110100555110111ee01111ee11110eeee444074470444eee44ffffffffff44e
+eeeff07ff70ffeee0555577777755550eee7000ee0007eeeeeebbb2222bbbeee1110115555110111e550011ee110055eeee4400770044eeeee44ffffffff44ee
+eeeef070070feeeee05555777755550ee000777ee777000eee6ebb2222bbe6eeeee1115555111eee5005000ee0005005eee4470000744eeeee44ffffffff44ee
+eeeeef0000feeeeeee005555555500ee0000000ee0000000ee665b2bb2b566eeeee1115555111eee0000000ee0000000eeee44777744eeeeeee44ffffff44eee
+eeeeeeffffeeeeeeeeee00000000eeee0000000ee0000000ee6eebbbbbbee6eeeee1115555111eee0000000ee0000000eeeee444444eeeeeeeee447fff44eeee
+eeeeeeee44eeeeeeeeeeeeeeeeeeeeeeeeeee445444eeeee0000000000000000000000000000000000000000000000000000000000000000ee44444ee44444ee
+eeeeeee444eeeeeeeee5e44e454eeeeeeeee44544444eeee0000000000000000000000000000000000000000000000000000000000000000e44444eeee44444e
+ee9999e44d9999eeee544444554eeeeeeeee554eee44eeee0000000000000000000000000000000000000000000000000000000000000000e4444eeeeee4444e
+e99999944999999eee44e44445454eeeeee544eeee444eee00000000000000000000000000000000000000000000000000000000000000004444eeeeeeee4444
+9999999999999999ee45e4e4445454eeeeee44eeeee44eee00000000000000000000000000000000000000000000000000000000000000004444eeeeeeee4444
+9999999999999999e45ee44e4e4e544eeeeee445eee44eee000000000000000000000000000000000000000000000000000000000000000044444eeeeee44444
+9999a999999a9999e5eeee4eee4e5e4eeeee4445eee44eee0000000000000000000000000000000000000000000000000000000000000000e44444eeee44444e
+999aaa9999aaa99954eeee44e4eeee4eeeeee45eeee44eee0000000000000000000000000000000000000000000000000000000000000000eee4444ee4444eee
+999aaaa99aaaa999e45eee4ee4eeee4eeeeee54eeee44eee0000000000000000000000000000000000000000000000000000000000000000eeee444ee444eeee
+9999aa9999aa9999e45eeee4e4eeee4eeeee54eeee44eeee0000000000000000000000000000000000000000000000000000000000000000eeee444ee444eeee
+9999999999999999e544ee44454ee4d4eeee54eeee44eeee0000000000000000000000000000000000000000000000000000000000000000eeee444ee444eeee
+999aaa999999aa99e45d4e44544ee4d4eeee44eeee4eeeee0000000000000000000000000000000000000000000000000000000000000000eee444eeee444eee
+e9a9aaa9a9aaa99ee4e5ee45454e4e4ee4eee44eee4eeeee0000000000000000000000000000000000000000000000000000000000000000eee444eeee444eee
+e9999aaaaaaa999eeee5e44544eeeeee4e4ee44eee44ee4e0000000000000000000000000000000000000000000000000000000000000000ee444eeeeee444ee
+ee9999a9aa9a99eeee5ee44544eeeeee4eee44eeeee44ee40000000000000000000000000000000000000000000000000000000000000000e4444eeeeee4444e
+eeee99999999eeeeeeeee4544eeeeeeee4444eeeeee4444d00000000000000000000000000000000000000000000000000000000000000000404eeeeeeee4040
 __label__
 aaa1aaa11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111aaa1aaa1
 11a1a1a11111111111111111111111111111111111aa11aaa1aaa1a1a11111aaa111111aa1aaa1aaa1aa11111111111111111111111111111111111111a1a1a1
