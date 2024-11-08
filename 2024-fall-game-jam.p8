@@ -2,9 +2,7 @@ pico-8 cartridge // http://www.pico-8.com
 version 42
 __lua__
 function _init()
- state='game'
- game_state='draw_one'
- game_state='deal_hand'
+ state='intro'
  -- setup mouse
  poke(0x5f2d, 1)
  mouse={}
@@ -225,19 +223,87 @@ function _update60()
    hover_lane=l
   end
  end)
- foreach(cards,function(c)
-  if c.target_x then
-   c.x=lerp(c.x,c.target_x,1/20)
+ if state=='intro' then
+  if not co_intro then
+   co_intro=cocreate(function()
+    add(msgs,new_moving_msg(
+     'create monsters by',4,
+     64,20,
+     0,-.02,
+     8,2))
+    add(msgs,new_moving_msg(
+     'fusing their parts.',5,
+     64,30,
+     0,-.02,
+     8,2))
+    while #msgs>0 do
+     yield()
+    end
+    add(msgs,new_moving_msg(
+     'your creations will',6,
+     64,60,
+     0,-.02,
+     8,2))
+    add(msgs,new_moving_msg(
+     'protect you and',7,
+     64,70,
+     0,-.02,
+     8,2))
+    add(msgs,new_moving_msg(
+     'smite your enemies.',8,
+     64,80,
+     0,-.02,
+     8,2))
+    while #msgs>0 do
+     yield()
+    end
+    add(msgs,new_moving_msg(
+     'you must draw.',6,
+     64,20,
+     0,0,
+     8,2))
+    add(msgs,new_moving_msg(
+     'you may cast.',8,
+     64,60,
+     0,0,
+     8,2))
+    add(msgs,new_moving_msg(
+     'you must shed.',10,
+     64,100,
+     0,0,
+     8,2))
+    while #msgs>0 do
+     yield()
+    end
+    add(msgs,new_moving_msg(
+     'click to start',60,
+     64,120,
+     0,0,
+     8,2))
+    while stat(34)==0 do
+     yield()
+    end
+   end)
   end
-  if c.target_y then
-   c.y=lerp(c.y,c.target_y,1/20)
+  coresume(co_intro)
+  if costatus(co_intro)=='dead' then
+   msgs={}
+   state='game'
+   game_state='deal_hand'
   end
-  if collide(mouse,c) then
-   hover_card=c
-   return
-  end
- end)
- if state=='game' then
+ elseif state=='game' then
+  foreach(cards,function(c)
+   if c.target_x then
+    c.x=lerp(c.x,c.target_x,1/20)
+   end
+   if c.target_y then
+    c.y=lerp(c.y,c.target_y,1/20)
+   end
+   if collide(mouse,c) then
+    hover_card=c
+    return
+   end
+  end)
   if game_state=='deal_hand' then
    if #player_one_hand==0 then
     for i=0,3 do
@@ -370,7 +436,11 @@ function _update60()
        l.body,
        l.legs
       )
-      add(msgs,new_moving_msg('its alive!',l.legs_x,l.y+10))
+      add(msgs,
+       new_moving_msg('its alive!',1.5,
+       l.legs_x,l.y+10,
+       0,-0.2,
+       11,2))
       -- delete the cards
       del(cards,l.head)
       del(cards,l.body)
@@ -461,64 +531,75 @@ function _update60()
 end
 
 function _draw ()
- cls(1)
- foreach(card_lanes,function(lane)
-  if lane==hover_lane and
-     lane.player==1 then
-   color(7)
-  elseif lane.valid then
-   color(10)
+ if state=='intro' then
+  cls(0)
+  -- draw mouse
+  if stat(34)==1 then
+   spr(2,mouse.x,mouse.y)
   else
-   color(0)
+   spr(1,mouse.x,mouse.y)
   end
-  if not lane.mob then
-   rect(lane.x,lane.y,lane.x+lane.w,lane.y+lane.h)
-   if lane.player==2 then
-    rectfill(lane.x,lane.y,lane.x+lane.w,lane.y+lane.h)
+  foreach(msgs,draw)
+ elseif state=='game' then
+  cls(1)
+  foreach(card_lanes,function(lane)
+   if lane==hover_lane and
+      lane.player==1 then
+    color(7)
+   elseif lane.valid then
+    color(10)
+   else
+    color(0)
    end
+   if not lane.mob then
+    rect(lane.x,lane.y,lane.x+lane.w,lane.y+lane.h)
+    if lane.player==2 then
+     rectfill(lane.x,lane.y,lane.x+lane.w,lane.y+lane.h)
+    end
+   end
+  end)
+  deck:draw()
+  if show_skip_button then
+   skip_button:draw()
   end
- end)
- deck:draw()
- if show_skip_button then
-  skip_button:draw()
+  -- draw mobs in-order
+  foreach(filter(mobs,'top'),draw)
+  foreach(filter(mobs,'mid'),draw)
+  foreach(filter(mobs,'bot'),draw)
+  foreach(cards,draw)
+  foreach(mobs,function(m)
+   m:draw_stats()
+  end)
+  if held_card then
+   rectfill(held_card.x+1,
+            held_card.y+1,
+            held_card.x+2*8,
+            held_card.y+3*8+1,0)
+   held_card:draw()
+  end
+  palt()
+  -- draw mouse
+  if stat(34)==1 then
+   spr(2,mouse.x,mouse.y)
+  else
+   spr(1,mouse.x,mouse.y)
+  end
+  if game_state_msg then
+   ocprint(game_state_msg,64,
+          sin(time())+.1+3,10,2)
+  end
+  if hover_card and
+     not hover_card.turned_over and
+     not held_card then
+   ocprint(hover_card.name,64,122,10,0)
+  end
+  if held_card then
+   cprint(held_card.name,64,120,10)
+  end
+  ocprint('p1 ♥'..player_one.hp,17,2,8,0)
+  ocprint('p2 ♥'..player_two.hp,107,2,8,0)
+  foreach(msgs,draw)
  end
- -- draw mobs in-order
- foreach(filter(mobs,'top'),draw)
- foreach(filter(mobs,'mid'),draw)
- foreach(filter(mobs,'bot'),draw)
- foreach(cards,draw)
- foreach(mobs,function(m)
-  m:draw_stats()
- end)
- if held_card then
-  rectfill(held_card.x+1,
-           held_card.y+1,
-           held_card.x+2*8,
-           held_card.y+3*8+1,0)
-  held_card:draw()
- end
- palt()
- -- draw mouse
- if stat(34)==1 then
-  spr(2,mouse.x,mouse.y)
- else
-  spr(1,mouse.x,mouse.y)
- end
- if game_state_msg then
-  ocprint(game_state_msg,64,
-         sin(time())+.1+3,10,2)
- end
- if hover_card and
-    not hover_card.turned_over and
-    not held_card then
-  ocprint(hover_card.name,64,122,10,0)
- end
- if held_card then
-  cprint(held_card.name,64,120,10)
- end
- ocprint('p1 ♥'..player_one.hp,17,2,8,0)
- ocprint('p2 ♥'..player_two.hp,107,2,8,0)
- foreach(msgs,draw)
 end
 
 function cprint(msg,x,y,c)
@@ -697,15 +778,7 @@ function distribute_mobs ()
  end)
 end
 
-function new_moving_msg (msg,x,y)
- local ttl=1.5
- local dx,dy=0,0
- local c,oc=10,9
- if msg=='its alive!' then
-  dy=-.2
-  c=11
-  oc=2
- end
+function new_moving_msg (msg,ttl,x,y,dx,dy,c,oc)
  return {
   msg=msg,
   ttl=ttl,
