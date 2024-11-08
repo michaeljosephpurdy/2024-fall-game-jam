@@ -267,12 +267,12 @@ function _update60 ()
   if not co_intro then
    co_intro=cocreate(function()
     add(msgs,new_moving_msg(
-     'create monsters by',4,
+     'create monsters by',3,
      64,20,
      0,-.02,
      8,2))
     add(msgs,new_moving_msg(
-     'fusing their parts.',5,
+     'fusing their parts.',4,
      64,30,
      0,-.02,
      8,2))
@@ -280,17 +280,7 @@ function _update60 ()
      yield()
     end
     add(msgs,new_moving_msg(
-     'your creations will',6,
-     64,60,
-     0,-.02,
-     8,2))
-    add(msgs,new_moving_msg(
-     'protect you and',7,
-     64,70,
-     0,-.02,
-     8,2))
-    add(msgs,new_moving_msg(
-     'smite your enemies.',8,
+     '',1,
      64,80,
      0,-.02,
      8,2))
@@ -298,17 +288,17 @@ function _update60 ()
      yield()
     end
     add(msgs,new_moving_msg(
-     'these creations are',6,
+     'your creations will',4,
      64,60,
      0,-.02,
      8,2))
     add(msgs,new_moving_msg(
-     'imperfect, and will',7,
+     'protect you and',5,
      64,70,
      0,-.02,
      8,2))
     add(msgs,new_moving_msg(
-     'slowly pass on.',8,
+     'smite your enemies.',6,
      64,80,
      0,-.02,
      8,2))
@@ -316,17 +306,51 @@ function _update60 ()
      yield()
     end
     add(msgs,new_moving_msg(
-     'you must draw one.',6,
+     '',1,
+     64,80,
+     0,-.02,
+     8,2))
+    while #msgs>0 do
+     yield()
+    end
+    add(msgs,new_moving_msg(
+     'these creations are',4,
+     64,60,
+     0,-.02,
+     8,2))
+    add(msgs,new_moving_msg(
+     'imperfect, and will',5,
+     64,70,
+     0,-.02,
+     8,2))
+    add(msgs,new_moving_msg(
+     'slowly pass on.',6,
+     64,80,
+     0,-.02,
+     8,2))
+    while #msgs>0 do
+     yield()
+    end
+    add(msgs,new_moving_msg(
+     '',1,
+     64,80,
+     0,-.02,
+     8,2))
+    while #msgs>0 do
+     yield()
+    end
+    add(msgs,new_moving_msg(
+     'you must draw one.',4,
      64,20,
      0,0,
      8,2))
     add(msgs,new_moving_msg(
-     'you may play one.',8,
+     'you may play one.',5,
      64,60,
      0,0,
      8,2))
     add(msgs,new_moving_msg(
-     'you must discard one.',10,
+     'you must discard one.',6,
      64,100,
      0,0,
      8,2))
